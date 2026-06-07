@@ -195,8 +195,6 @@ function normalizePoints(points) {
   const maxZ = Math.max(...zs);
   const scale = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1e-9);
 
-  const scale = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1e-9);
-
   return safePoints.map((point) => ({
     ...point,
     x: ((point.x - minX) / scale) * 2 - 1,
