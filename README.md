@@ -21,6 +21,9 @@ Acoustic Manifold Viewer is a browser-based local prototype for exploring audio 
 - `js/projection.js` - PCA and projection helpers
 - `js/scene.js` - Three.js scene setup and rendering
 - `js/utils.js` - shared helpers
+- `notebooks/01_feature_extraction.ipynb` - extract MFCCs and spectral descriptors locally
+- `notebooks/02_projection_and_clustering.ipynb` - compare PCA, UMAP, and t-SNE, then cluster frames
+- `notebooks/03_export_manifest.ipynb` - export browser-ready JSON for the viewer
 
 ## Run it locally in VS Code
 
@@ -69,3 +72,4 @@ If Python is not available, any static server works. No build step is required.
 
 - The app relies on CDN-hosted libraries for the first version, which keeps setup simple.
 - If you are offline, make sure the external libraries are available locally before using the app.
+- The notebooks are the place to do heavier PC-side analysis before sending a compact manifest back to the browser viewer.
