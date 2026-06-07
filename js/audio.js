@@ -12,7 +12,8 @@ function decodeBuffer(audioContext, arrayBuffer) {
   });
 }
 
-export async function loadMediaSession(file) {
+export async function loadMediaSession(file, options = {}) {
+  const onReadProgress = typeof options.onReadProgress === 'function' ? options.onReadProgress : null;
   const objectUrl = URL.createObjectURL(file);
   const mediaElement = document.createElement(isVideoFile(file) ? 'video' : 'audio');
 
@@ -22,7 +23,7 @@ export async function loadMediaSession(file) {
   mediaElement.controls = false;
 
   const audioContext = new AudioContextCtor({ latencyHint: 'interactive' });
-  const arrayBuffer = await file.arrayBuffer();
+  const arrayBuffer = await readFileAsArrayBuffer(file, onReadProgress);
 
   let decodedBuffer = null;
   let decodeError = null;
@@ -46,6 +47,22 @@ export async function loadMediaSession(file) {
     sampleRate: decodedBuffer?.sampleRate ?? audioContext.sampleRate,
     channelCount: decodedBuffer?.numberOfChannels ?? 1,
   };
+}
+
+function readFileAsArrayBuffer(file, onProgress = null) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.addEventListener('progress', (event) => {
+      if (typeof onProgress === 'function') {
+        onProgress(event.loaded, event.total || file.size);
+      }
+    });
+
+    reader.addEventListener('load', () => resolve(reader.result));
+    reader.addEventListener('error', () => reject(reader.error ?? new Error('Failed to read file.')));
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 export function attachMediaSource(session, destination = null) {

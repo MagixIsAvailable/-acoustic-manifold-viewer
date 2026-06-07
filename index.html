@@ -36,6 +36,17 @@
       <span id="statusText">Waiting for a file.</span>
     </section>
 
+    <section class="process-panel panel" aria-live="polite" aria-label="File processing progress">
+      <div class="process-meta">
+        <span id="processPhase">Idle</span>
+        <span id="processPercent">0%</span>
+        <span id="processEta">Waiting for a file</span>
+      </div>
+      <div class="process-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="File processing progress">
+        <div id="processFill" class="process-fill"></div>
+      </div>
+    </section>
+
     <main class="layout">
       <aside class="sidebar panel">
         <section class="stack">

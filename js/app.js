@@ -18,6 +18,11 @@ const elements = {
   displayMode: document.getElementById('displayMode'),
   statusText: document.getElementById('statusText'),
   statusDot: document.getElementById('statusDot'),
+  processPhase: document.getElementById('processPhase'),
+  processPercent: document.getElementById('processPercent'),
+  processEta: document.getElementById('processEta'),
+  processFill: document.getElementById('processFill'),
+  processTrack: document.querySelector('.process-track'),
   fileName: document.getElementById('fileName'),
   fileDuration: document.getElementById('fileDuration'),
   sampleRate: document.getElementById('sampleRate'),
@@ -56,6 +61,51 @@ function setStatus(message, kind = 'info') {
   elements.statusDot.style.boxShadow = kind === 'error'
     ? '0 0 0 6px rgba(238, 141, 141, 0.16)'
     : '0 0 0 6px rgba(134, 215, 203, 0.14)';
+}
+
+function setProcessProgress(percent, phase = null, eta = null) {
+  const safePercent = clamp(percent, 0, 100);
+  if (elements.processFill) {
+    elements.processFill.style.width = `${safePercent}%`;
+  }
+
+  if (elements.processTrack) {
+    elements.processTrack.setAttribute('aria-valuenow', String(Math.round(safePercent)));
+  }
+
+  if (elements.processPercent) {
+    elements.processPercent.textContent = `${Math.round(safePercent)}%`;
+  }
+
+  if (phase) {
+    elements.processPhase.textContent = phase;
+  }
+
+  if (eta) {
+    elements.processEta.textContent = eta;
+  }
+}
+
+function setProcessState(phase, percent, eta = null) {
+  setProcessProgress(percent, phase, eta);
+}
+
+function estimateEta(startTime, percent) {
+  if (percent <= 0.5) {
+    return 'Calculating...';
+  }
+
+  const elapsed = performance.now() - startTime;
+  const remaining = elapsed * ((100 - percent) / Math.max(percent, 1e-9));
+  if (!Number.isFinite(remaining)) {
+    return 'Calculating...';
+  }
+
+  if (remaining < 1000) {
+    return 'Less than 1s left';
+  }
+
+  return `${Math.ceil(remaining / 1000)}s left`;
 }
 
 function setInfo(file, analysis = null) {
@@ -261,11 +311,20 @@ async function handleFile(file) {
   }
 
   try {
-    const session = await loadMediaSession(file);
+    const progressStart = performance.now();
+    setProcessState('Reading file', 2, 'Starting...');
+
+    const session = await loadMediaSession(file, {
+      onReadProgress: (loaded, total) => {
+        const readPercent = total > 0 ? (loaded / total) * 35 : 0;
+        setProcessState('Reading file', readPercent, estimateEta(progressStart, readPercent));
+      },
+    });
     state.session = session;
     mountPreview(session);
     attachMediaEvents();
     setInfo(file, null);
+    setProcessState('Decoding media', 35, 'File read complete');
 
     if (file.size > 60 * 1024 * 1024) {
       setNote('Large file detected. Analysis may take a while, and very long media is down-sampled for responsiveness.');
@@ -273,12 +332,20 @@ async function handleFile(file) {
 
     if (session.decodedBuffer) {
       setStatus('Analyzing audio frames...');
-      state.analysis = analyzeAudioBuffer(session.decodedBuffer, { maxFrames: 8000 });
+      state.analysis = await analyzeAudioBuffer(session.decodedBuffer, {
+        maxFrames: 8000,
+        onProgress: (percent) => {
+          const mapped = 35 + (percent * 60);
+          setProcessState('Analyzing frames', mapped, estimateEta(progressStart, mapped));
+        },
+      });
+      setProcessState('Projecting into 3D', 96, 'Almost done');
       renderProjectedFrames(state.analysis.frames);
       setInfo(file, state.analysis);
       setNote(state.analysis.warnings.join(' '));
       setStatus('Projection complete. Visualization ready.');
       elements.modeTag.textContent = session.kind === 'video' ? 'Video audio decoded' : 'Audio decoded';
+      setProcessState('Ready', 100, 'Processing complete');
     } else {
       setStatus('Decode fallback: live analysis will run during playback.', 'info');
       state.liveMode = true;
@@ -286,6 +353,7 @@ async function handleFile(file) {
       setNote('The browser could not fully decode this file container. Playback will still work, and features will accumulate while the media plays.');
       attachMediaSource(session);
       startLiveAnalysisLoop();
+      setProcessState('Ready for playback', 100, 'Live mode');
     }
 
     setStatus('Rendering ready.');
@@ -293,6 +361,7 @@ async function handleFile(file) {
     setStatus('Could not load media.', 'error');
     setNote(`Error: ${error.message ?? error}`, true);
     elements.debugPanel.textContent = String(error?.stack ?? error?.message ?? error);
+    setProcessState('Failed', 0, 'Check the error message');
   }
 }
 
@@ -446,3 +515,4 @@ scene.resize();
 setLegend(state.colorMode, []);
 setStatus('Waiting for a file.');
 setNote('Upload a file to start the analysis pipeline.');
+setProcessState('Idle', 0, 'Waiting for a file');

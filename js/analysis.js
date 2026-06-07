@@ -114,17 +114,19 @@ function combineChannels(audioBuffer) {
   return mono;
 }
 
-export function analyzeAudioBuffer(audioBuffer, options = {}) {
+export async function analyzeAudioBuffer(audioBuffer, options = {}) {
   const frameSize = options.frameSize ?? 2048;
   const hopSize = options.hopSize ?? 1024;
   const maxFrames = options.maxFrames ?? 8000;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const mono = combineChannels(audioBuffer);
   const estimatedFrames = Math.max(1, Math.floor((mono.length - frameSize) / hopSize) + 1);
   const stride = Math.max(1, Math.ceil(estimatedFrames / maxFrames));
   const effectiveHop = hopSize * stride;
   const sampledFrames = [];
+  let frameIndex = 0;
 
-  for (let start = 0, frameIndex = 0; start + frameSize <= mono.length; start += effectiveHop, frameIndex += 1) {
+  for (let start = 0; start + frameSize <= mono.length; start += effectiveHop, frameIndex += 1) {
     const frame = mono.subarray(start, start + frameSize);
     const metrics = extractFeatures(frame, audioBuffer.sampleRate, frameSize);
 
@@ -146,6 +148,14 @@ export function analyzeAudioBuffer(audioBuffer, options = {}) {
       mfcc: metrics.mfcc,
       features: metrics,
     });
+
+    if (onProgress) {
+      onProgress(0.55 + ((frameIndex + 1) / Math.max(estimatedFrames / stride, 1)) * 0.40);
+    }
+
+    if (frameIndex % 32 === 0) {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    }
   }
 
   const warnings = [];

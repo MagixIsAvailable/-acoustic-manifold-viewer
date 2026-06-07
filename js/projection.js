@@ -1,39 +1,47 @@
 import { clamp } from './utils.js';
 
+function finiteNumber(value, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function getFeatureVector(frame, mode) {
   switch (mode) {
     case 'spectral':
       return [
-        frame.centroid,
-        frame.spread,
-        frame.rolloff,
-        frame.flatness,
-        frame.dominantFrequency,
+        finiteNumber(frame.centroid),
+        finiteNumber(frame.spread),
+        finiteNumber(frame.rolloff),
+        finiteNumber(frame.flatness),
+        finiteNumber(frame.dominantFrequency),
       ];
     case 'dynamics':
       return [
-        frame.rms,
-        frame.zcr,
-        frame.flatness,
-        frame.rolloff,
-        frame.centroid,
+        finiteNumber(frame.rms),
+        finiteNumber(frame.zcr),
+        finiteNumber(frame.flatness),
+        finiteNumber(frame.rolloff),
+        finiteNumber(frame.centroid),
       ];
     case 'mfcc':
     default:
-      return [frame.mfcc?.[0] ?? 0, frame.mfcc?.[1] ?? 0, frame.mfcc?.[2] ?? 0];
+      return [
+        finiteNumber(frame.mfcc?.[0]),
+        finiteNumber(frame.mfcc?.[1]),
+        finiteNumber(frame.mfcc?.[2]),
+      ];
   }
 }
 
 function getPcaFeatureVector(frame) {
   return [
-    ...(frame.mfcc ?? new Array(13).fill(0)),
-    frame.rms ?? 0,
-    frame.centroid ?? 0,
-    frame.flatness ?? 0,
-    frame.rolloff ?? 0,
-    frame.spread ?? 0,
-    frame.zcr ?? 0,
-    frame.dominantFrequency ?? 0,
+    ...((frame.mfcc ?? new Array(13).fill(0)).map((value) => finiteNumber(value))),
+    finiteNumber(frame.rms),
+    finiteNumber(frame.centroid),
+    finiteNumber(frame.flatness),
+    finiteNumber(frame.rolloff),
+    finiteNumber(frame.spread),
+    finiteNumber(frame.zcr),
+    finiteNumber(frame.dominantFrequency),
   ];
 }
 
@@ -66,7 +74,10 @@ function meanCenter(matrix) {
   return {
     means,
     stdDeviations,
-    matrix: matrix.map((row) => row.map((value, column) => (value - means[column]) / stdDeviations[column])),
+    matrix: matrix.map((row) => row.map((value, column) => {
+      const safeValue = finiteNumber(value);
+      return (safeValue - means[column]) / stdDeviations[column];
+    })),
   };
 }
 
@@ -104,11 +115,11 @@ function vectorLength(vector) {
 
 function normalizeVector(vector) {
   const length = vectorLength(vector);
-  return vector.map((value) => value / length);
+  return vector.map((value) => finiteNumber(value / length));
 }
 
 function dotProduct(left, right) {
-  return left.reduce((sum, value, index) => sum + value * right[index], 0);
+  return left.reduce((sum, value, index) => sum + finiteNumber(value) * finiteNumber(right[index]), 0);
 }
 
 function subtractOuterProduct(matrix, eigenvalue, eigenvector) {
@@ -160,13 +171,22 @@ function projectWithVectors(matrix, vectors) {
 }
 
 function normalizePoints(points) {
-  if (!points.length) {
-    return points;
+  const safePoints = points
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z))
+    .map((point) => ({
+      ...point,
+      x: finiteNumber(point.x),
+      y: finiteNumber(point.y),
+      z: finiteNumber(point.z),
+    }));
+
+  if (!safePoints.length) {
+    return [];
   }
 
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const zs = points.map((point) => point.z);
+  const xs = safePoints.map((point) => point.x);
+  const ys = safePoints.map((point) => point.y);
+  const zs = safePoints.map((point) => point.z);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
@@ -175,7 +195,9 @@ function normalizePoints(points) {
   const maxZ = Math.max(...zs);
   const scale = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1e-9);
 
-  return points.map((point) => ({
+  const scale = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1e-9);
+
+  return safePoints.map((point) => ({
     ...point,
     x: ((point.x - minX) / scale) * 2 - 1,
     y: ((point.y - minY) / scale) * 2 - 1,
@@ -192,30 +214,32 @@ export function projectFrames(frames, mode = 'pca') {
     ? frames.map(getPcaFeatureVector)
     : frames.map((frame) => getFeatureVector(frame, mode));
 
+  const sanitizedMatrix = featureMatrix.map((row) => row.map((value) => finiteNumber(value)));
+
   let points;
   let basis = [];
 
-  if (mode === 'pca' && featureMatrix.length >= 3) {
-    const { matrix } = meanCenter(featureMatrix);
+  if (mode === 'pca' && sanitizedMatrix.length >= 3) {
+    const { matrix } = meanCenter(sanitizedMatrix);
     basis = runPca(matrix, 3);
 
     if (basis.length === 3) {
       const projected = projectWithVectors(matrix, basis);
       points = projected.map((projection, index) => ({
         ...frames[index],
-        x: projection[0] ?? 0,
-        y: projection[1] ?? 0,
-        z: projection[2] ?? 0,
+        x: finiteNumber(projection[0]),
+        y: finiteNumber(projection[1]),
+        z: finiteNumber(projection[2]),
       }));
     }
   }
 
   if (!points) {
-    points = featureMatrix.map((values, index) => ({
+    points = sanitizedMatrix.map((values, index) => ({
       ...frames[index],
-      x: values[0] ?? 0,
-      y: values[1] ?? 0,
-      z: values[2] ?? 0,
+      x: finiteNumber(values[0]),
+      y: finiteNumber(values[1]),
+      z: finiteNumber(values[2]),
     }));
   }
 
@@ -227,22 +251,26 @@ export function projectFrames(frames, mode = 'pca') {
 }
 
 export function getColorDomain(points, colorMode) {
-  if (!points.length) {
+  const safePoints = points.filter((point) => Number.isFinite(point.time) || Number.isFinite(point.rms) || Number.isFinite(point.centroid) || Number.isFinite(point.flatness) || Number.isFinite(point.rolloff));
+
+  if (!safePoints.length) {
     return [0, 1];
   }
 
+  const finiteValues = (selector) => safePoints.map(selector).filter(Number.isFinite);
+
   switch (colorMode) {
     case 'rms':
-      return [Math.min(...points.map((point) => point.rms)), Math.max(...points.map((point) => point.rms))];
+      return [Math.min(...finiteValues((point) => point.rms)), Math.max(...finiteValues((point) => point.rms))];
     case 'centroid':
-      return [Math.min(...points.map((point) => point.centroid)), Math.max(...points.map((point) => point.centroid))];
+      return [Math.min(...finiteValues((point) => point.centroid)), Math.max(...finiteValues((point) => point.centroid))];
     case 'flatness':
-      return [Math.min(...points.map((point) => point.flatness)), Math.max(...points.map((point) => point.flatness))];
+      return [Math.min(...finiteValues((point) => point.flatness)), Math.max(...finiteValues((point) => point.flatness))];
     case 'rolloff':
-      return [Math.min(...points.map((point) => point.rolloff)), Math.max(...points.map((point) => point.rolloff))];
+      return [Math.min(...finiteValues((point) => point.rolloff)), Math.max(...finiteValues((point) => point.rolloff))];
     case 'time':
     default:
-      return [points[0].time, points[points.length - 1].time];
+      return [safePoints[0].time ?? 0, safePoints[safePoints.length - 1].time ?? 1];
   }
 }
 

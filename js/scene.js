@@ -109,12 +109,14 @@ export function createScene(container) {
   }
 
   function buildPointCloud(points, colorMode) {
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(points.length * 3);
-    const colors = new Float32Array(points.length * 3);
-    const domain = getColorDomain(points, colorMode);
+    const safePoints = points.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z));
 
-    points.forEach((point, index) => {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(safePoints.length * 3);
+    const colors = new Float32Array(safePoints.length * 3);
+    const domain = getColorDomain(safePoints, colorMode);
+
+    safePoints.forEach((point, index) => {
       positions[index * 3] = point.x;
       positions[index * 3 + 1] = point.y;
       positions[index * 3 + 2] = point.z;
@@ -131,9 +133,9 @@ export function createScene(container) {
     geometry.computeBoundingSphere();
 
     const pointsObject = new THREE.Points(geometry, pointsMaterial.clone());
-    const linePositions = new Float32Array(points.length * 3);
+    const linePositions = new Float32Array(safePoints.length * 3);
 
-    points.forEach((point, index) => {
+    safePoints.forEach((point, index) => {
       linePositions[index * 3] = point.x;
       linePositions[index * 3 + 1] = point.y;
       linePositions[index * 3 + 2] = point.z;
